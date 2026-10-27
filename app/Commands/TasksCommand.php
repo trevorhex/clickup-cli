@@ -17,7 +17,7 @@ class TasksCommand extends Command
 {
     protected $signature = 'tasks
         {search? : Only tasks whose name contains this text}
-        {--s|status=* : Status to include (repeatable), e.g. -s "in progress" -s review}
+        {--s|status=* : Status to include, partial match (repeatable), e.g. -s prog -s review}
         {--l|list= : List name (partial match) or list ID}
         {--d|due= : today, overdue, week, or a YYYY-MM-DD date (due on/before)}
         {--closed : Include closed tasks}
@@ -55,6 +55,7 @@ class TasksCommand extends Command
             return self::FAILURE;
         }
 
+        $seenStatuses = $tasks->pluck('status.status')->unique()->sort()->values();
         $tasks = $this->sort($this->localFilters($tasks));
         $total = $tasks->count();
         $tasks = $tasks->take((int) $this->option('limit'));
@@ -67,6 +68,11 @@ class TasksCommand extends Command
 
         if ($tasks->isEmpty()) {
             $this->info('  No matching tasks. 🎉');
+
+            if ($this->option('status') && $seenStatuses->isNotEmpty()) {
+                $closed = $this->option('closed') ? '' : ' (add --closed for closed ones)';
+                $this->line("  <fg=gray>Statuses found: {$seenStatuses->implode(', ')}{$closed}</>");
+            }
 
             return self::SUCCESS;
         }
@@ -92,10 +98,6 @@ class TasksCommand extends Command
 
         if (! $this->option('everyone')) {
             $filters['assignees'] = [$userId];
-        }
-
-        if ($statuses = $this->option('status')) {
-            $filters['statuses'] = $statuses;
         }
 
         if (($list = $this->option('list')) && ctype_digit($list)) {
@@ -131,6 +133,16 @@ class TasksCommand extends Command
     /** Filters that need matching ClickUp can't do (partial names). */
     private function localFilters(Collection $tasks): Collection
     {
+        // Statuses differ per list, so match against the ones these tasks actually have.
+        if ($inputs = $this->option('status')) {
+            $names = $tasks->pluck('status.status')->unique()->values()->all();
+            $wanted = collect($inputs)
+                ->flatMap(fn ($s) => Parse::fuzzy($s, array_combine($names, $names)))
+                ->values()
+                ->all();
+            $tasks = $tasks->filter(fn ($t) => in_array($t['status']['status'], $wanted, true));
+        }
+
         if ($search = $this->argument('search')) {
             $tasks = $tasks->filter(fn ($t) => Str::contains($t['name'], $search, ignoreCase: true));
         }

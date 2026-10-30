@@ -25,11 +25,17 @@ Settings (workspace, default list) live in `~/.config/cu/config.json`, and a lis
 | `cu tasks [search]` | Your open tasks. `-s status` (repeatable), `-l list`, `-d today\|overdue\|week\|YYYY-MM-DD`, `--closed`, `--everyone`, `--sort=due\|priority\|status\|updated\|list`, `--limit`, `--json` |
 | `cu show <id>` | Details, description, subtasks, checklists and the last 5 comments. `-c N` (up to 25), `--open`, `--json` |
 | `cu update <id>...` | `-s status`, `--done`, `-p priority`, `-d due`, `--name`, `--desc`, `-a`/`-u` assignee (repeatable), `-c comment`. With one ID and no flags, prompts for a new status |
-| `cu comment <id> [msg]` | Add a comment (prompts if there's no message) |
+| `cu comment <id> [msg]` | Add a comment in Markdown (prompts if there's no message). `-f file` reads it from a file, `-e comment-id` (or `-e last` for your newest) edits an existing comment instead |
 | `cu create [name]` | `-l list`, `-s`, `-p`, `-d`, `-a` (default: you), `--unassigned`, `--desc`, `--parent` (the subtask goes in the parent's list unless you pass `-l`), `--open` |
 | `cu lists [search]` | Space › Folder › List tree, optionally only paths containing `search`. `--default` picks the list for `cu create`, `--refresh` skips the cache |
 
 Note that `-c` means a comment count in `show` but comment text in `update`.
+
+### Comment formatting
+
+Comments (`cu comment` and `cu update -c`) are sent as ClickUp rich text, converted from a little Markdown: `### Heading` (`#` and `##` work too), `- item` or `* item` bullets, `1. item` numbered lists, `**bold**`, `` `code` `` and `[text](url)` links. Everything else is plain text.
+
+Editing replaces the whole comment. `cu show` prints each comment's ID next to its date. Writing the comment in a file and passing `-f` avoids the shell expanding `$` amounts in double quotes.
 
 ### Fuzzy input
 
@@ -56,6 +62,8 @@ cu tasks booking -l reserv -s todo
 cu show 868hyw6e4
 cu update 868hyw6e4 868hyw6e2 --done -c "Verified on staging"
 cu update 868hyw6e4 -s review -a heather -d fri
+cu comment 868hyw6e4 -f notes.md
+cu comment 868hyw6e4 -f notes.md -e last
 cu create "Gift card checkout" -l "spa book" -p high -d +3d
 ```
 
@@ -75,3 +83,4 @@ php cu app:build       # optional: single-file PHAR in builds/
 | `app/Commands/ClickUpCommand.php` | Base command: error handling and list/status/user lookups |
 | `app/Support/Parse.php` | Priority, date and fuzzy-match parsing |
 | `app/Support/Format.php` | Colored status, priority and due-date output |
+| `app/Support/CommentMarkup.php` | Markdown subset → ClickUp rich-text comment blocks |

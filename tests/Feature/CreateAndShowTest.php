@@ -16,8 +16,8 @@ beforeEach(function () {
         '*/list/1/task' => Http::response(fakeTask(['id' => 'new1', 'url' => 'https://app.clickup.com/t/new1'])),
         '*/list/1' => Http::response(fakeStatuses()),
         '*/task/abc123/comment' => Http::response(['comments' => [
-            ['comment_text' => 'Newest', 'user' => ['username' => 'Heather'], 'date' => '1700000300000'],
-            ['comment_text' => 'Oldest', 'user' => ['username' => 'Trevor'], 'date' => '1700000000000'],
+            ['id' => '9002', 'comment_text' => 'Newest', 'user' => ['username' => 'Heather'], 'date' => '1700000300000'],
+            ['id' => '9001', 'comment_text' => 'Oldest', 'user' => ['username' => 'Trevor'], 'date' => '1700000000000'],
         ]]),
         '*/task/abc123?*' => Http::response(fakeTask([
             'markdown_description' => "Steps:\n1. Open <calendar>",
@@ -87,5 +87,6 @@ it('shows a task with description, checklist, and comments oldest-first', functi
         ->expectsOutputToContain('QA (1/2)')
         ->expectsOutputToContain('Oldest')
         ->expectsOutputToContain('Newest')
+        ->expectsOutputToContain('9001') // comment IDs, for `cu comment --edit`
         ->assertSuccessful();
 });

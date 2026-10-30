@@ -2,6 +2,7 @@
 
 namespace App\ClickUp;
 
+use App\Support\CommentMarkup;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
@@ -74,9 +75,16 @@ class Client
         return $this->put("/task/{$taskId}", $data);
     }
 
+    /** Post a comment, rendering its Markdown as ClickUp rich text. */
     public function addComment(string $taskId, string $text): array
     {
-        return $this->post("/task/{$taskId}/comment", ['comment_text' => $text, 'notify_all' => false]);
+        return $this->post("/task/{$taskId}/comment", ['comment' => CommentMarkup::toBlocks($text), 'notify_all' => false]);
+    }
+
+    /** Replace a comment's text, rendering its Markdown as ClickUp rich text. */
+    public function updateComment(string $commentId, string $text): array
+    {
+        return $this->put("/comment/{$commentId}", ['comment' => CommentMarkup::toBlocks($text)]);
     }
 
     public function createTask(string $listId, array $data): array

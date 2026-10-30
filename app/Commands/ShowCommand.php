@@ -125,7 +125,7 @@ class ShowCommand extends ClickUpCommand
         $this->section('Recent comments');
         foreach ($comments as $c) {
             $who = $c['user']['username'] ?? 'someone';
-            $this->line("  <fg=cyan>{$who}</> <fg=gray>".Format::ago($c['date'] ?? null).'</>');
+            $this->line("  <fg=cyan>{$who}</> <fg=gray>".Format::ago($c['date'] ?? null)." · {$c['id']}</>");
             foreach (explode("\n", trim($c['comment_text'] ?? '')) as $line) {
                 $this->line('    '.OutputFormatter::escape($line));
             }

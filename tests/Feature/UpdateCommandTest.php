@@ -51,7 +51,7 @@ it('sets priority, due date, and assignees, and posts a comment', function () {
         ->and($put['assignees'])->toBe(['add' => [7], 'rem' => [42]]);
 
     Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/task/abc123/comment')
-        && $r['comment_text'] === 'Looks good');
+        && $r['comment'] === [['text' => 'Looks good', 'attributes' => []], ['text' => "\n", 'attributes' => []]]);
 });
 
 it('rejects an unknown status and lists the valid ones', function () {

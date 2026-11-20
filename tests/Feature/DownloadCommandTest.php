@@ -93,3 +93,24 @@ it('lists attachments in cu show', function () {
         ->doesntExpectOutputToContain('gone.txt')
         ->assertSuccessful();
 });
+
+it('fetches an attachment once even when picked twice', function () {
+    $this->artisan("download abc123 1 report -o {$this->dir}")->assertSuccessful();
+
+    Http::assertSentCount(2); // the task, then report.pdf once
+    expect(file_exists("{$this->dir}/report (2).pdf"))->toBeFalse();
+});
+
+it('treats -o 0 as a directory named 0', function () {
+    $cwd = getcwd();
+    mkdir($this->dir);
+    chdir($this->dir);
+
+    try {
+        $this->artisan('download solo -o 0')->assertSuccessful();
+    } finally {
+        chdir($cwd);
+    }
+
+    expect(file_get_contents("{$this->dir}/0/notes.txt"))->toBe('NOTES');
+});

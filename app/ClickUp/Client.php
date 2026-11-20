@@ -2,7 +2,6 @@
 
 namespace App\ClickUp;
 
-use App\Support\CommentMarkup;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
@@ -33,9 +32,11 @@ class Client
     }
 
     /**
-     * Filtered tasks across a whole workspace, following pagination.
+     * Filtered tasks across a whole workspace, following pagination up to $maxPages
+     * (100 tasks each). "complete" is false when that cap cut the results short.
      *
      * @param  array  $filters  ClickUp query params, e.g. ['assignees' => [123], 'statuses' => ['open']]
+     * @return array{tasks: array, complete: bool}
      */
     public function workspaceTasks(string $workspaceId, array $filters = [], int $maxPages = 10): array
     {
@@ -46,11 +47,11 @@ class Client
             $tasks = [...$tasks, ...($response['tasks'] ?? [])];
 
             if (($response['last_page'] ?? true) || count($response['tasks'] ?? []) === 0) {
-                break;
+                return ['tasks' => $tasks, 'complete' => true];
             }
         }
 
-        return $tasks;
+        return ['tasks' => $tasks, 'complete' => false];
     }
 
     /**
@@ -76,16 +77,24 @@ class Client
         return $this->put("/task/{$taskId}", $data);
     }
 
-    /** Post a comment, rendering its Markdown as ClickUp rich text. */
-    public function addComment(string $taskId, string $text): array
+    /**
+     * Post a comment as ClickUp rich text.
+     *
+     * @param  list<array>  $blocks  from CommentMarkup::toBlocks()
+     */
+    public function addComment(string $taskId, array $blocks): array
     {
-        return $this->post("/task/{$taskId}/comment", ['comment' => CommentMarkup::toBlocks($text), 'notify_all' => false]);
+        return $this->post("/task/{$taskId}/comment", ['comment' => $blocks, 'notify_all' => false]);
     }
 
-    /** Replace a comment's text, rendering its Markdown as ClickUp rich text. */
-    public function updateComment(string $commentId, string $text): array
+    /**
+     * Replace a comment's text.
+     *
+     * @param  list<array>  $blocks  from CommentMarkup::toBlocks()
+     */
+    public function updateComment(string $commentId, array $blocks): array
     {
-        return $this->put("/comment/{$commentId}", ['comment' => CommentMarkup::toBlocks($text)]);
+        return $this->put("/comment/{$commentId}", ['comment' => $blocks]);
     }
 
     public function createTask(string $listId, array $data): array
@@ -196,6 +205,8 @@ class Client
             throw new RuntimeException(
                 "ClickUp API error ({$e->response->status()}): {$message}", previous: $e
             );
+        } catch (ConnectionException $e) {
+            throw new RuntimeException("Couldn't reach ClickUp: {$e->getMessage()}", previous: $e);
         }
     }
 

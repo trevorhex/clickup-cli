@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\ClickUp\Client;
 use App\ClickUp\Hierarchy;
+use App\Support\CommentMarkup;
 use App\Support\Parse;
 use App\Support\UserConfig;
 use InvalidArgumentException;
@@ -76,8 +77,18 @@ abstract class ClickUpCommand extends Command
     {
         $matches = $this->hierarchy()->search($query);
 
+        // The list cache is up to an hour old. Look up IDs directly, and refresh for names.
+        if ($matches->isEmpty() && ctype_digit($query)) {
+            return $this->fetchList($query)
+                ?? throw new RuntimeException("No list with ID {$query}. Try `cu lists`.");
+        }
+
         if ($matches->isEmpty()) {
-            throw new RuntimeException("No list matches \"{$query}\". Try `cu lists` (or `cu lists --refresh`).");
+            $matches = $this->hierarchy()->search($query, refresh: true);
+        }
+
+        if ($matches->isEmpty()) {
+            throw new RuntimeException("No list matches \"{$query}\". Try `cu lists`.");
         }
 
         if ($matches->count() === 1) {
@@ -94,6 +105,84 @@ abstract class ClickUpCommand extends Command
         $id = select('Which list?', $matches->pluck('path', 'id')->all(), scroll: 12);
 
         return $matches->firstWhere('id', (string) $id);
+    }
+
+    /**
+     * A list that isn't in the cached hierarchy, such as a new one, or a guest's
+     * list reached through a task shared on its own.
+     *
+     * @return array{id: string, name: string, path: string}|null
+     */
+    private function fetchList(string $id): ?array
+    {
+        try {
+            $list = $this->clickup->list($id);
+        } catch (RuntimeException) {
+            return null;
+        }
+
+        $folder = ($list['folder']['hidden'] ?? true) ? null : ($list['folder']['name'] ?? null);
+
+        return [
+            'id' => (string) $list['id'],
+            'name' => $list['name'],
+            'path' => implode(' › ', array_filter([$folder, $list['name']])),
+        ];
+    }
+
+    /**
+     * Turn a comment's Markdown into ClickUp blocks, tagging each @mention that
+     * matches one person who can see the task.
+     *
+     * @return list<array>
+     */
+    protected function commentBlocks(string $text, string $listId): array
+    {
+        $people = [];
+
+        foreach (CommentMarkup::mentions($text) as $handle) {
+            $hits = Parse::fuzzy($handle, $this->members($listId));
+
+            if (count($hits) > 1) {
+                throw new RuntimeException("@{$handle} matches several people: ".implode(', ', $hits).'. Use more of their name, e.g. @firstlast.');
+            }
+
+            if ($hits === []) {
+                $this->warn("  @{$handle} doesn't match anyone on this task's list, so it's left as plain text.");
+
+                continue;
+            }
+
+            $id = (int) array_key_first($hits);
+            $people[$handle] = ['id' => $id, 'username' => $this->memberNames[$listId][$id]];
+        }
+
+        return CommentMarkup::toBlocks($text, $people);
+    }
+
+    /** @var array<string, array<int, string>> list ID => user ID => username */
+    private array $memberNames = [];
+
+    /** @var array<string, array<int, string>> list ID => user ID => "username <email>" */
+    private array $memberLabels = [];
+
+    /**
+     * People who can be assigned (and mentioned) in a list, fetched once.
+     *
+     * @return array<int, string> user ID => "username <email>"
+     */
+    protected function members(string $listId): array
+    {
+        if (! isset($this->memberLabels[$listId])) {
+            $members = $this->clickup->listMembers($listId);
+            $this->memberNames[$listId] = array_column($members, 'username', 'id');
+            $this->memberLabels[$listId] = array_combine(
+                array_column($members, 'id'),
+                array_map(fn ($m) => "{$m['username']} <{$m['email']}>", $members),
+            ) ?: [];
+        }
+
+        return $this->memberLabels[$listId];
     }
 
     /**
@@ -126,9 +215,7 @@ abstract class ClickUpCommand extends Command
      */
     protected function resolveUsers(array $people, string $listId): array
     {
-        $members = null;
-
-        return array_map(function ($person) use (&$members, $listId) {
+        return array_map(function ($person) use ($listId) {
             if (in_array(strtolower($person), ['me', '@me'], true)) {
                 return $this->userId();
             }
@@ -137,11 +224,7 @@ abstract class ClickUpCommand extends Command
                 return (int) $person;
             }
 
-            $members ??= collect($this->clickup->listMembers($listId))
-                ->mapWithKeys(fn ($m) => [$m['id'] => "{$m['username']} <{$m['email']}>"])
-                ->all();
-
-            $hits = Parse::fuzzy($person, $members);
+            $hits = Parse::fuzzy($person, $this->members($listId));
 
             return match (count($hits)) {
                 1 => (int) array_key_first($hits),

@@ -1,6 +1,8 @@
 <?php
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 
 it('requests my tasks with ClickUp-style array params', function () {
@@ -78,4 +80,37 @@ it('rejects an unknown --due value', function () {
     $this->artisan('tasks --due=someday')->assertFailed();
 
     Http::assertNothingSent();
+});
+
+it('rejects an impossible --due date cleanly', function () {
+    $this->artisan('tasks -d 2026-13-45')
+        ->expectsOutputToContain('Unknown --due value')
+        ->assertFailed();
+});
+
+it('reports a network failure instead of crashing', function () {
+    Http::fake(['*' => fn () => throw new ConnectionException('Could not resolve host')]);
+
+    $this->artisan('tasks')
+        ->expectsOutputToContain("Couldn't reach ClickUp")
+        ->assertFailed();
+});
+
+it('warns when the page limit cuts results short', function () {
+    Http::fake(['*' => Http::response(['tasks' => [fakeTask()], 'last_page' => false])]);
+
+    $this->artisan('tasks')
+        ->expectsOutputToContain('first 1,000 matching tasks')
+        ->assertSuccessful();
+});
+
+it('escapes console markup in list and status names', function () {
+    Http::fake(['*' => Http::response(['tasks' => [
+        fakeTask(['list' => ['name' => '<error>Ops'], 'status' => ['status' => '<info>new', 'color' => '#abc']]),
+    ], 'last_page' => true])]);
+
+    // Check the rendered output: unescaped tags would be swallowed as styles.
+    Artisan::call('tasks');
+
+    expect(Artisan::output())->toContain('● <info>new')->toContain('<error>Ops');
 });

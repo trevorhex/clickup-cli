@@ -2,18 +2,15 @@
 
 namespace App\Commands;
 
-use App\ClickUp\Client;
 use App\Support\Format;
 use App\Support\Parse;
-use App\Support\UserConfig;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
-use LaravelZero\Framework\Commands\Command;
 use RuntimeException;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 
-class TasksCommand extends Command
+class TasksCommand extends ClickUpCommand
 {
     protected $signature = 'tasks
         {search? : Only tasks whose name contains this text}
@@ -28,32 +25,10 @@ class TasksCommand extends Command
 
     protected $description = 'List tasks assigned to you';
 
-    public function handle(Client $clickup, UserConfig $config): int
+    protected function perform(): int
     {
-        $workspaceId = $config->get('workspace_id');
-        $userId = $config->get('user_id');
-
-        if (! $workspaceId || ! $userId) {
-            $this->error('No default workspace yet. Run `cu me` first.');
-
-            return self::FAILURE;
-        }
-
-        try {
-            $filters = $this->apiFilters($userId);
-        } catch (RuntimeException $e) {
-            $this->error($e->getMessage());
-
-            return self::FAILURE;
-        }
-
-        try {
-            $tasks = collect($clickup->workspaceTasks($workspaceId, $filters));
-        } catch (RuntimeException $e) {
-            $this->error($e->getMessage());
-
-            return self::FAILURE;
-        }
+        $result = $this->clickup->workspaceTasks($this->workspaceId(), $this->apiFilters($this->userId()));
+        $tasks = collect($result['tasks']);
 
         $seenStatuses = $tasks->pluck('status.status')->unique()->sort()->values();
         $tasks = $this->sort($this->localFilters($tasks));
@@ -63,15 +38,20 @@ class TasksCommand extends Command
         if ($this->option('json')) {
             $this->line($tasks->values()->toJson(JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
+            if (! $result['complete']) {
+                $this->output->getErrorStyle()->writeln('<comment>Stopped at ClickUp\'s first 1,000 matching tasks; some are missing.</comment>');
+            }
+
             return self::SUCCESS;
         }
 
         if ($tasks->isEmpty()) {
             $this->info('  No matching tasks. 🎉');
+            $this->truncationWarning($result['complete'], 0);
 
             if ($this->option('status') && $seenStatuses->isNotEmpty()) {
                 $closed = $this->option('closed') ? '' : ' (add --closed for closed ones)';
-                $this->line("  <fg=gray>Statuses found: {$seenStatuses->implode(', ')}{$closed}</>");
+                $this->line('  <fg=gray>Statuses found: '.OutputFormatter::escape($seenStatuses->implode(', '))."{$closed}</>");
             }
 
             return self::SUCCESS;
@@ -84,8 +64,17 @@ class TasksCommand extends Command
 
         $shown = $tasks->count() < $total ? "{$tasks->count()} of {$total}" : $total;
         $this->line("  <fg=gray>{$shown} task(s). `cu show <id>` for details.</>");
+        $this->truncationWarning($result['complete'], $tasks->count());
 
         return self::SUCCESS;
+    }
+
+    /** ClickUp only gave us the first pages, so filtering and totals cover just those. */
+    private function truncationWarning(bool $complete, int $shown): void
+    {
+        if (! $complete) {
+            $this->warn('  Stopped at ClickUp\'s first 1,000 matching tasks, so some are missing'.($shown ? ' and the total is low' : '').'. Narrow it down with -l, -d, or without --closed/--everyone.');
+        }
     }
 
     /** Filters ClickUp can apply server-side. */
@@ -124,7 +113,7 @@ class TasksCommand extends Command
             'overdue' => [null, $now],
             'today' => [$now->startOfDay()->subMillisecond(), $now->endOfDay()],
             'week' => [null, $now->addDays(7)->endOfDay()],
-            default => preg_match('/^\d{4}-\d{2}-\d{2}$/', $due)
+            default => preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $due, $m) && checkdate((int) $m[2], (int) $m[3], (int) $m[1])
                 ? [null, CarbonImmutable::parse($due)->endOfDay()]
                 : throw new RuntimeException("Unknown --due value \"{$due}\". Use today, overdue, week, or YYYY-MM-DD."),
         };
@@ -176,7 +165,7 @@ class TasksCommand extends Command
             Format::status($t['status']),
             Format::priority($t['priority'] ?? null),
             Format::due($t['due_date'] ?? null),
-            Str::limit($t['list']['name'] ?? '', 25),
+            OutputFormatter::escape(Str::limit($t['list']['name'] ?? '', 25)),
         ];
     }
 }

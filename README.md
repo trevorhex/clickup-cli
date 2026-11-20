@@ -27,7 +27,7 @@ Settings (workspace, default list) live in `~/.config/cu/config.json`, and a lis
 | `cu update <id>...` | `-s status`, `--done`, `-p priority`, `-d due`, `--name`, `--desc`, `-a`/`-u` assignee (repeatable), `-c comment`. With one ID and no flags, prompts for a new status |
 | `cu comment <id> [msg]` | Add a comment in Markdown (prompts if there's no message). `-f file` reads it from a file, `-e comment-id` (or `-e last` for your newest) edits an existing comment instead |
 | `cu download <id> [files]...` | Save attachments. Pick them by number (from `cu show`), part of the file name, or attachment ID; with none given you're asked (a lone attachment just downloads). `--all`, `-o dir` (default: current directory), `--force` to overwrite instead of saving as `name (2).ext` |
-| `cu create [name]` | `-l list`, `-s`, `-p`, `-d`, `-a` (default: you), `--unassigned`, `--desc`, `--parent` (the subtask goes in the parent's list unless you pass `-l`), `--open` |
+| `cu create [name]` | `-l list`, `-s`, `-p`, `-d`, `-a` (default: you), `--unassigned`, `--desc`, `--parent` (the subtask goes in the parent's list, as ClickUp requires), `--open` |
 | `cu lists [search]` | Space › Folder › List tree, optionally only paths containing `search`. `--default` picks the list for `cu create`, `--refresh` skips the cache |
 
 Note that `-c` means a comment count in `show` but comment text in `update`.
@@ -35,6 +35,8 @@ Note that `-c` means a comment count in `show` but comment text in `update`.
 ### Comment formatting
 
 Comments (`cu comment` and `cu update -c`) are sent as ClickUp rich text, converted from a little Markdown: `### Heading` (`#` and `##` work too), `- item` or `* item` bullets, `1. item` numbered lists, `**bold**`, `` `code` `` and `[text](url)` links. Everything else is plain text.
+
+`@name` tags (and notifies) a person who's a member of the task's list, matched like assignees: `@heather` finds Heather Worthan, as does part of their email. If two people match, use more of the name with the spaces dropped (`@heatherw`). A handle that matches nobody stays plain text with a warning, and an email address like `a@b.com` is never treated as a mention. `@` inside `` `code` ``, `**bold**` or a link isn't a tag either.
 
 Editing replaces the whole comment. `cu show` prints each comment's ID next to its date. Writing the comment in a file and passing `-f` avoids the shell expanding `$` amounts in double quotes.
 

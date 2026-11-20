@@ -11,24 +11,63 @@ namespace App\Support;
  * shows Markdown literally, so comments are sent as blocks instead.
  *
  * Supported: "# " to "### " headings, "- " / "* " bullets, "1. " numbered
- * items, **bold**, `code` and [text](url) links. Anything else is plain text.
+ * items, **bold**, `code`, [text](url) links and @mentions. Anything else is
+ * plain text.
  */
 class CommentMarkup
 {
-    /** @return list<array{text: string, attributes: array}> */
-    public static function toBlocks(string $markdown): array
+    /** "@heather" or "@heather.w", but not the "@" in an email address. */
+    private const MENTION = '(?<![\w.@])@\w(?:[\w.-]*\w)?';
+
+    /**
+     * @param  array<string, array{id: int, username: string}>  $people  lowercase handle (no "@") => user, from mentions()
+     * @return list<array>
+     */
+    public static function toBlocks(string $markdown, array $people = []): array
     {
         $blocks = [];
-        $lines = explode("\n", str_replace("\r\n", "\n", trim($markdown)));
 
-        foreach ($lines as $line) {
+        foreach (self::lines($markdown) as $line) {
             [$format, $content] = self::lineFormat($line);
 
-            array_push($blocks, ...self::inline($content));
+            array_push($blocks, ...self::inline($content, $people));
             $blocks[] = ['text' => "\n", 'attributes' => $format];
         }
 
         return $blocks;
+    }
+
+    /**
+     * The @handles in a comment, lowercase and without the "@". Ones inside `code`,
+     * **bold** or links are left as text, so they aren't returned.
+     *
+     * @return list<string>
+     */
+    public static function mentions(string $markdown): array
+    {
+        $handles = [];
+
+        foreach (self::lines($markdown) as $line) {
+            foreach (self::split(self::lineFormat($line)[1]) as $part) {
+                if (preg_match('/^'.self::MENTION.'$/u', $part)) {
+                    $handles[] = mb_strtolower(substr($part, 1));
+                }
+            }
+        }
+
+        return array_values(array_unique($handles));
+    }
+
+    /** @return list<string> */
+    private static function lines(string $markdown): array
+    {
+        return explode("\n", str_replace("\r\n", "\n", trim($markdown)));
+    }
+
+    /** @return list<string> */
+    private static function split(string $text): array
+    {
+        return preg_split('/(\*\*.+?\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|'.self::MENTION.')/u', $text, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
     }
 
     /** @return array{0: array, 1: string} the "\n" attributes and the line without its marker */
@@ -42,16 +81,25 @@ class CommentMarkup
         };
     }
 
-    /** @return list<array{text: string, attributes: array}> */
-    private static function inline(string $text): array
+    /** @return list<array> */
+    private static function inline(string $text, array $people): array
     {
-        $parts = preg_split('/(\*\*.+?\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\))/', $text, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
-
         return array_map(fn (string $part) => match (true) {
+            ($person = self::mentioned($part, $people)) !== null => [
+                'type' => 'tag',
+                'user' => ['id' => $person['id']],
+                'text' => '@'.$person['username'],
+            ],
             (bool) preg_match('/^\*\*(.+)\*\*$/', $part, $m) => ['text' => $m[1], 'attributes' => ['bold' => true]],
             (bool) preg_match('/^`(.+)`$/', $part, $m) => ['text' => $m[1], 'attributes' => ['code' => true]],
             (bool) preg_match('/^\[(.+)\]\((.+)\)$/', $part, $m) => ['text' => $m[1], 'attributes' => ['link' => $m[2]]],
             default => ['text' => $part, 'attributes' => []],
-        }, $parts);
+        }, self::split($text));
+    }
+
+    /** The person a "@handle" part refers to, if it's one we resolved. */
+    private static function mentioned(string $part, array $people): ?array
+    {
+        return preg_match('/^'.self::MENTION.'$/u', $part) ? ($people[mb_strtolower(substr($part, 1))] ?? null) : null;
     }
 }

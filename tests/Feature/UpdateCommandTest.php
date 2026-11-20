@@ -67,3 +67,22 @@ it('refuses to run with nothing to change', function () {
 
     Http::assertNothingSent();
 });
+
+it('refuses an empty priority or due date instead of guessing', function () {
+    $this->artisan('update abc123 --priority=')
+        ->expectsOutputToContain('Priority is empty')
+        ->assertFailed();
+
+    $this->artisan('update abc123 --due=')
+        ->expectsOutputToContain('Due date is empty')
+        ->assertFailed();
+
+    Http::assertNotSent(fn (Request $r) => $r->method() === 'PUT');
+});
+
+it('tags @mentions in a comment added with -c', function () {
+    $this->artisan('update abc123 -p low -c "Done, @heather"')->assertSuccessful();
+
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST'
+        && $r['comment'][1] === ['type' => 'tag', 'user' => ['id' => 7], 'text' => '@Heather Worthan']);
+});

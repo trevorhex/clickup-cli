@@ -53,8 +53,8 @@ class ShowCommand extends ClickUpCommand
             $t['list']['name'] ?? null,
         ]));
 
-        $assignees = collect($t['assignees'] ?? [])->pluck('username')->implode(', ') ?: '<fg=gray>unassigned</>';
-        $tags = collect($t['tags'] ?? [])->pluck('name')->map(fn ($n) => "#{$n}")->implode(' ');
+        $assignees = OutputFormatter::escape(collect($t['assignees'] ?? [])->pluck('username')->implode(', ')) ?: '<fg=gray>unassigned</>';
+        $tags = OutputFormatter::escape(collect($t['tags'] ?? [])->pluck('name')->map(fn ($n) => "#{$n}")->implode(' '));
 
         $this->newLine();
         $this->line('  <options=bold>'.OutputFormatter::escape($t['name']).'</>');
@@ -65,11 +65,11 @@ class ShowCommand extends ClickUpCommand
             'Status' => Format::status($t['status']),
             'Priority' => Format::priority($t['priority'] ?? null) ?: '<fg=gray>none</>',
             'Due' => Format::due($t['due_date'] ?? null) ?: '<fg=gray>none</>',
-            'List' => $location,
+            'List' => OutputFormatter::escape($location),
             'Assignees' => $assignees,
             'Tags' => $tags,
             'Parent' => $t['parent'] ?? null,
-            'Created' => Format::ago($t['date_created'] ?? null).' by '.($t['creator']['username'] ?? '?'),
+            'Created' => Format::ago($t['date_created'] ?? null).' by '.OutputFormatter::escape($t['creator']['username'] ?? '?'),
             'Updated' => Format::ago($t['date_updated'] ?? null),
         ];
 
@@ -110,7 +110,7 @@ class ShowCommand extends ClickUpCommand
             $items = $checklist['items'] ?? [];
             $done = count(array_filter($items, fn ($i) => $i['resolved']));
 
-            $this->section("{$checklist['name']} ({$done}/".count($items).')');
+            $this->section(OutputFormatter::escape($checklist['name'])." ({$done}/".count($items).')');
             foreach ($items as $item) {
                 $this->line('  '.($item['resolved'] ? '<fg=green>☑</>' : '☐').' '.OutputFormatter::escape($item['name']));
             }
@@ -140,7 +140,7 @@ class ShowCommand extends ClickUpCommand
 
         $this->section('Recent comments');
         foreach ($comments as $c) {
-            $who = $c['user']['username'] ?? 'someone';
+            $who = OutputFormatter::escape($c['user']['username'] ?? 'someone');
             $this->line("  <fg=cyan>{$who}</> <fg=gray>".Format::ago($c['date'] ?? null)." · {$c['id']}</>");
             foreach (explode("\n", trim($c['comment_text'] ?? '')) as $line) {
                 $this->line('    '.OutputFormatter::escape($line));

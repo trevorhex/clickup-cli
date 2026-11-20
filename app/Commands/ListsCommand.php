@@ -2,6 +2,8 @@
 
 namespace App\Commands;
 
+use Symfony\Component\Console\Formatter\OutputFormatter;
+
 use function Laravel\Prompts\search;
 
 class ListsCommand extends ClickUpCommand
@@ -36,17 +38,17 @@ class ListsCommand extends ClickUpCommand
         // Print as a tree: Space, then Folder, then lists.
         $this->newLine();
         foreach ($lists->groupBy('space') as $space => $inSpace) {
-            $this->line("  <options=bold>{$space}</>");
+            $this->line('  <options=bold>'.OutputFormatter::escape($space).'</>');
 
             foreach ($inSpace->groupBy(fn ($l) => $l['folder'] ?? '') as $folder => $inFolder) {
                 $indent = $folder === '' ? '    ' : '      ';
                 if ($folder !== '') {
-                    $this->line("    <fg=cyan>{$folder}/</>");
+                    $this->line('    <fg=cyan>'.OutputFormatter::escape($folder).'/</>');
                 }
 
                 foreach ($inFolder as $list) {
                     $marker = $list['id'] === $default ? ' <fg=green>● default</>' : '';
-                    $this->line("{$indent}{$list['name']}  <fg=gray>{$list['id']}</>{$marker}");
+                    $this->line($indent.OutputFormatter::escape($list['name'])."  <fg=gray>{$list['id']}</>{$marker}");
                 }
             }
             $this->newLine();
@@ -72,7 +74,7 @@ class ListsCommand extends ClickUpCommand
 
         $list = $lists->firstWhere('id', (string) $id);
         $this->config->set('default_list_id', $list['id']);
-        $this->info("  ✔ Default list set to {$list['path']}");
+        $this->info('  ✔ Default list set to '.OutputFormatter::escape($list['path']));
 
         return self::SUCCESS;
     }

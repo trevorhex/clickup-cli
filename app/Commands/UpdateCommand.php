@@ -54,12 +54,16 @@ class UpdateCommand extends ClickUpCommand
         $task = $this->clickup->task($id, $this->config->get('workspace_id'));
         [$payload, $changes] = $this->hasChanges() ? $this->buildPayload($task) : $this->promptForStatus($task);
 
+        // Resolve @mentions before changing anything, so an ambiguous one stops the whole update.
+        $comment = $this->option('comment');
+        $blocks = $comment !== null ? $this->commentBlocks($comment, (string) $task['list']['id']) : null;
+
         if ($payload !== []) {
             $this->clickup->updateTask($task['id'], $payload);
         }
 
-        if ($comment = $this->option('comment')) {
-            $this->clickup->addComment($task['id'], $comment);
+        if ($blocks !== null && trim($comment) !== '') {
+            $this->clickup->addComment($task['id'], $blocks);
             $changes[] = 'comment added';
         }
 
@@ -84,7 +88,7 @@ class UpdateCommand extends ClickUpCommand
                 : $this->resolveStatus($this->option('status'), $statuses);
 
             $payload['status'] = $new;
-            $changes[] = "status: {$task['status']['status']} → <options=bold>{$new}</>";
+            $changes[] = 'status: '.OutputFormatter::escape($task['status']['status']).' → <options=bold>'.OutputFormatter::escape($new).'</>';
         }
 
         if (($priority = $this->option('priority')) !== null) {
@@ -128,7 +132,7 @@ class UpdateCommand extends ClickUpCommand
 
         return $new === $task['status']['status']
             ? [[], ['no change']]
-            : [['status' => $new], ["status: {$task['status']['status']} → <options=bold>{$new}</>"]];
+            : [['status' => $new], ['status: '.OutputFormatter::escape($task['status']['status']).' → <options=bold>'.OutputFormatter::escape($new).'</>']];
     }
 
     private function statusesFor(string $listId): array

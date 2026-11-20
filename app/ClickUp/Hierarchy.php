@@ -79,9 +79,9 @@ class Hierarchy
     /**
      * Lists matching an exact ID, or a partial name / path ("spa › book").
      */
-    public function search(string $query): Collection
+    public function search(string $query, bool $refresh = false): Collection
     {
-        $lists = $this->lists();
+        $lists = $this->lists($refresh);
 
         if ($exact = $lists->firstWhere('id', $query)) {
             return collect([$exact]);

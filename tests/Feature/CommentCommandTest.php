@@ -48,3 +48,51 @@ it('edits my newest comment with --edit=last, skipping other people\'s', functio
 
     Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && str_ends_with($r->url(), '/comment/9001'));
 });
+
+it('tags @mentioned people who can see the task', function () {
+    Http::fake([
+        '*/task/abc123?*' => Http::response(fakeTask()),
+        '*/list/1/member' => Http::response(['members' => [
+            ['id' => 7, 'username' => 'Heather Worthan', 'email' => 'heather@example.com'],
+            ['id' => 8, 'username' => 'Ravil Gainullov', 'email' => 'info@ifrond.com'],
+        ]]),
+    ]);
+
+    $this->artisan('comment abc123 "@heather can you check? cc @ravil, not trevor@example.com or `@code`"')
+        ->assertSuccessful();
+
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && array_slice($r['comment'], 0, 4) === [
+        ['type' => 'tag', 'user' => ['id' => 7], 'text' => '@Heather Worthan'],
+        ['text' => ' can you check? cc ', 'attributes' => []],
+        ['type' => 'tag', 'user' => ['id' => 8], 'text' => '@Ravil Gainullov'],
+        ['text' => ', not trevor@example.com or ', 'attributes' => []],
+    ]);
+});
+
+it('leaves unknown @handles as text and refuses ambiguous ones', function () {
+    Http::fake([
+        '*/task/abc123?*' => Http::response(fakeTask()),
+        '*/list/1/member' => Http::response(['members' => [
+            ['id' => 7, 'username' => 'Heather Worthan', 'email' => 'heather@example.com'],
+            ['id' => 9, 'username' => 'Heather Lee', 'email' => 'hlee@example.com'],
+        ]]),
+    ]);
+
+    $this->artisan('comment abc123 "@nobody hi"')
+        ->expectsOutputToContain("@nobody doesn't match anyone")
+        ->assertSuccessful();
+
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && $r['comment'][0] === ['text' => '@nobody', 'attributes' => []]);
+
+    $this->artisan('comment abc123 "@heather hi"')
+        ->expectsOutputToContain('@heather matches several people')
+        ->assertFailed();
+
+    $this->artisan('comment abc123 "@heatherlee hi"')->assertSuccessful();
+});
+
+it('skips the task lookup when there is nothing to mention', function () {
+    $this->artisan('comment abc123 "Plain, no tags"')->assertSuccessful();
+
+    Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '/task/abc123?'));
+});

@@ -23,6 +23,10 @@ class Parse
     {
         $input = strtolower(trim($input));
 
+        if ($input === '') {
+            throw new InvalidArgumentException('Priority is empty. Use urgent, high, normal, low, or none.');
+        }
+
         if (in_array($input, self::NONE, true)) {
             return null;
         }
@@ -47,6 +51,10 @@ class Parse
     public static function dueDate(string $input): ?CarbonImmutable
     {
         $input = strtolower(trim($input));
+
+        if ($input === '') {
+            throw new InvalidArgumentException('Due date is empty. Try today, fri, +3d, 2026-11-05, or none.');
+        }
 
         if (in_array($input, self::NONE, true)) {
             return null;

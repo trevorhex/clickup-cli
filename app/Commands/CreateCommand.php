@@ -6,6 +6,7 @@ use App\Support\Format;
 use App\Support\Parse;
 use Illuminate\Support\Facades\Process;
 use RuntimeException;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 use function Laravel\Prompts\search;
 use function Laravel\Prompts\text;
@@ -21,7 +22,7 @@ class CreateCommand extends ClickUpCommand
         {--a|assign=* : Assignee: me, a username, email, or user ID (default: me)}
         {--unassigned : Don\'t assign anyone}
         {--desc= : Description (Markdown)}
-        {--parent= : Create as a subtask of this task ID}
+        {--parent= : Create as a subtask of this task ID (in the parent\'s list)}
         {--o|open : Open the new task in your browser}';
 
     protected $description = 'Create a task (assigned to you by default)';
@@ -66,7 +67,7 @@ class CreateCommand extends ClickUpCommand
 
         $task = $this->clickup->createTask($list['id'], $payload);
 
-        $this->line('  <fg=green>✔</> Created <fg=gray>'.Format::taskId($task).'</> in '.$list['path']);
+        $this->line('  <fg=green>✔</> Created <fg=gray>'.Format::taskId($task).'</> in '.OutputFormatter::escape($list['path']));
         $this->line("    <fg=gray>{$task['url']}</>");
 
         if ($this->option('open')) {
@@ -76,15 +77,21 @@ class CreateCommand extends ClickUpCommand
         return self::SUCCESS;
     }
 
-    /** --list, else the parent's list, else the saved default, else ask. */
+    /** The parent's list (ClickUp requires it), else --list, else the saved default, else ask. */
     private function targetList(?array $parent): array
     {
-        if ($query = $this->option('list')) {
-            return $this->resolveList($query);
+        if ($parent) {
+            $list = $this->resolveList((string) $parent['list']['id']);
+
+            if (($query = $this->option('list')) && $this->resolveList($query)['id'] !== $list['id']) {
+                throw new RuntimeException("A subtask has to be in its parent's list ({$list['path']}). Drop --list.");
+            }
+
+            return $list;
         }
 
-        if ($parent) {
-            return $this->resolveList((string) $parent['list']['id']);
+        if ($query = $this->option('list')) {
+            return $this->resolveList($query);
         }
 
         if ($default = $this->config->get('default_list_id')) {

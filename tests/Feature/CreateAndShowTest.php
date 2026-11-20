@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\UserConfig;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -89,4 +90,39 @@ it('shows a task with description, checklist, and comments oldest-first', functi
         ->expectsOutputToContain('Newest')
         ->expectsOutputToContain('9001') // comment IDs, for `cu comment --edit`
         ->assertSuccessful();
+});
+
+it('finds a list that is newer than the cache by ID', function () {
+    Http::fake(['*/list/77' => Http::response(['id' => '77', 'name' => 'Brand New', 'folder' => ['name' => 'Spa', 'hidden' => false]])]);
+    Http::fake(['*/list/77/task' => Http::response(fakeTask(['id' => 'new2']))]);
+
+    $this->artisan('create "Thing" -l 77 --unassigned')
+        ->expectsOutputToContain('Created new2 in Spa › Brand New')
+        ->assertSuccessful();
+});
+
+it('puts a subtask in its parent\'s list and refuses a different --list', function () {
+    $this->artisan('create "Sub" --parent abc123 -l backlog --unassigned')
+        ->expectsOutputToContain("has to be in its parent's list")
+        ->assertFailed();
+
+    $this->artisan('create "Sub" --parent abc123 --unassigned')->assertSuccessful();
+
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/list/1/task') && $r['parent'] === 'abc123');
+});
+
+it('forgets the default list when switching workspaces', function () {
+    $config = app(UserConfig::class);
+    $config->set('default_list_id', '1');
+
+    Http::fake([
+        '*/user' => Http::response(['user' => ['id' => 42, 'username' => 'Trevor', 'email' => 't@example.com']]),
+        // Only workspace 901 now, so `cu me` switches to it without asking.
+        '*/team' => Http::response(['teams' => [['id' => '901', 'name' => 'B']]]),
+    ]);
+
+    $this->artisan('me')->assertSuccessful();
+
+    expect($config->get('workspace_id'))->toBe('901')
+        ->and($config->get('default_list_id'))->toBeNull();
 });

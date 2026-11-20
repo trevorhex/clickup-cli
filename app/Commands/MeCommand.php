@@ -6,6 +6,7 @@ use App\ClickUp\Client;
 use App\Support\UserConfig;
 use LaravelZero\Framework\Commands\Command;
 use RuntimeException;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 use function Laravel\Prompts\select;
 
@@ -27,7 +28,7 @@ class MeCommand extends Command
         }
 
         $this->newLine();
-        $this->line("  <fg=green>✔</> Authenticated as <options=bold>{$user['username']}</> <fg=gray>({$user['email']})</>");
+        $this->line('  <fg=green>✔</> Authenticated as <options=bold>'.OutputFormatter::escape($user['username']).'</> <fg=gray>('.OutputFormatter::escape($user['email']).')</>');
         $this->line("  <fg=gray>User ID:</> {$user['id']}");
 
         if ($workspaces === []) {
@@ -45,6 +46,11 @@ class MeCommand extends Command
                 ? $workspaces[0]['id']
                 : select('Default workspace', array_column($workspaces, 'name', 'id'));
 
+            // A default list belongs to one workspace, so it doesn't carry over.
+            if ((string) $current !== (string) $config->get('workspace_id')) {
+                $config->set('default_list_id', null);
+            }
+
             $config->set('workspace_id', (string) $current);
         }
 
@@ -53,7 +59,7 @@ class MeCommand extends Command
             ['', 'Workspace', 'ID'],
             array_map(fn ($w) => [
                 $w['id'] == $current ? '<fg=green>●</>' : '',
-                $w['name'],
+                OutputFormatter::escape($w['name']),
                 $w['id'],
             ], $workspaces),
         );

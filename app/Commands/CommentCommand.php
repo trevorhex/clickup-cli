@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\ClickUp\Client;
+use App\Support\CommentMarkup;
 use RuntimeException;
 
 use function Laravel\Prompts\textarea;
@@ -20,23 +21,26 @@ class CommentCommand extends ClickUpCommand
     protected function perform(): int
     {
         $id = $this->argument('id');
+        $message = $this->message();
+        $listId = null;
 
-        // The comment endpoints need the real task ID, so look up custom IDs first.
-        if (Client::isCustomId($id)) {
-            $id = $this->clickup->task($id, $this->config->get('workspace_id'))['id'];
+        // The comment endpoints need the real task ID, and @mentions need the task's list.
+        if (Client::isCustomId($id) || CommentMarkup::mentions($message) !== []) {
+            $task = $this->clickup->task($id, $this->config->get('workspace_id'));
+            [$id, $listId] = [$task['id'], (string) $task['list']['id']];
         }
 
-        $message = $this->message();
+        $blocks = $listId ? $this->commentBlocks($message, $listId) : CommentMarkup::toBlocks($message);
 
         if ($edit = $this->option('edit')) {
             $commentId = $edit === 'last' ? $this->lastOwnComment($id) : $edit;
-            $this->clickup->updateComment($commentId, $message);
+            $this->clickup->updateComment($commentId, $blocks);
             $this->line("  <fg=green>✔</> Comment <fg=gray>{$commentId}</> updated on <fg=gray>{$this->argument('id')}</>");
 
             return self::SUCCESS;
         }
 
-        $comment = $this->clickup->addComment($id, $message);
+        $comment = $this->clickup->addComment($id, $blocks);
         $this->line("  <fg=green>✔</> Comment <fg=gray>{$comment['id']}</> added to <fg=gray>{$this->argument('id')}</>");
 
         return self::SUCCESS;

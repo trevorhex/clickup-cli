@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use Carbon\CarbonImmutable;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 /**
  * Console formatting shared by the task commands.
@@ -14,8 +15,9 @@ class Format
     public static function status(array $status): string
     {
         $color = $status['color'] ?? null;
+        $name = OutputFormatter::escape($status['status']);
 
-        return $color ? "<fg={$color}>●</> {$status['status']}" : $status['status'];
+        return $color && preg_match('/^#([0-9a-f]{3}){1,2}$/i', $color) ? "<fg={$color}>●</> {$name}" : $name;
     }
 
     public static function priority(?array $priority): string

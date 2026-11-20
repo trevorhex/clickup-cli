@@ -30,7 +30,8 @@ class DownloadCommand extends ClickUpCommand
 
         $picked = $this->pick($attachments);
 
-        $dir = rtrim($this->option('output'), '/') ?: '/';
+        $dir = rtrim($this->option('output'), '/');
+        $dir = $dir === '' ? '/' : $dir;
         if (! is_dir($dir) && ! @mkdir($dir, 0777, true)) {
             throw new RuntimeException("Can't create {$dir}.");
         }
@@ -60,7 +61,8 @@ class DownloadCommand extends ClickUpCommand
         }
 
         if ($wanted !== []) {
-            return array_map(fn ($w) => $this->match($w, $attachments), $wanted);
+            // Each link works once, so never fetch the same attachment twice.
+            return collect($wanted)->map(fn ($w) => $this->match($w, $attachments))->unique('id')->values()->all();
         }
 
         $labels = array_map(fn ($a) => $a['title'].'  '.Format::bytes($a['size'] ?? null), $attachments);

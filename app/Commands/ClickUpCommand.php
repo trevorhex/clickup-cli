@@ -140,11 +140,25 @@ abstract class ClickUpCommand extends Command
     {
         $people = [];
 
-        foreach (CommentMarkup::mentions($text) as $handle) {
-            $hits = Parse::fuzzy($handle, $this->members($listId));
+        foreach (CommentMarkup::mentions($text) as $names) {
+            // A full name as typed ("@Cameron Smith") wins, so it's tagged whole even if
+            // several people share the first name.
+            $members = $this->members($listId);
+            $normalize = fn (string $s) => preg_replace('/\s+/', ' ', mb_strtolower(trim($s)));
+            foreach (array_slice($names, 0, -1) as $name) {
+                $ids = array_keys(array_filter($this->memberNames[$listId], fn ($u) => $normalize($u) === $name));
+                if (count($ids) === 1) {
+                    $people[$name] = ['id' => (int) $ids[0], 'username' => $this->memberNames[$listId][$ids[0]]];
+
+                    continue 2;
+                }
+            }
+
+            $handle = end($names);
+            $hits = Parse::fuzzy($handle, $members);
 
             if (count($hits) > 1) {
-                throw new RuntimeException("@{$handle} matches several people: ".implode(', ', $hits).'. Use more of their name, e.g. @firstlast.');
+                throw new RuntimeException("@{$handle} matches several people: ".implode(', ', $hits).'. Use their full name or more of it, e.g. @firstlast.');
             }
 
             if ($hits === []) {

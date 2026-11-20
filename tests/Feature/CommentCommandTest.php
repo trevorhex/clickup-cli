@@ -96,3 +96,27 @@ it('skips the task lookup when there is nothing to mention', function () {
 
     Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '/task/abc123?'));
 });
+
+it('tags a typed full name once, without repeating the last name', function () {
+    Http::fake([
+        '*/task/abc123?*' => Http::response(fakeTask()),
+        '*/list/1/member' => Http::response(['members' => [
+            ['id' => 5, 'username' => 'Cameron Smith', 'email' => 'cameron@example.com'],
+            ['id' => 6, 'username' => 'Cameron Diaz', 'email' => 'cd@example.com'],
+            ['id' => 7, 'username' => 'Heather Worthan', 'email' => 'heather@example.com'],
+        ]]),
+    ]);
+
+    // "@Cameron" alone is ambiguous here, but the full name settles it.
+    $this->artisan('comment abc123 "@Cameron Smith updated it. @Heather Worthan, @heather and @Heather Smith"')->assertSuccessful();
+
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && array_slice($r['comment'], 0, 7) === [
+        ['type' => 'tag', 'user' => ['id' => 5], 'text' => '@Cameron Smith'],
+        ['text' => ' updated it. ', 'attributes' => []],
+        ['type' => 'tag', 'user' => ['id' => 7], 'text' => '@Heather Worthan'],
+        ['text' => ', ', 'attributes' => []],
+        ['type' => 'tag', 'user' => ['id' => 7], 'text' => '@Heather Worthan'],
+        ['text' => ' and ', 'attributes' => []],
+        ['type' => 'tag', 'user' => ['id' => 7], 'text' => '@Heather Worthan'],
+    ]);
+});

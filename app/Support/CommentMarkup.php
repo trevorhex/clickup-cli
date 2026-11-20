@@ -20,7 +20,7 @@ class CommentMarkup
     private const MENTION = '(?<![\w.@])@\w(?:[\w.-]*\w)?';
 
     /**
-     * @param  array<string, array{id: int, username: string}>  $people  lowercase handle (no "@") => user, from mentions()
+     * @param  array<string, array{id: int, username: string}>  $people  lowercase name as typed after "@" => user, from resolving mentions()
      * @return list<array>
      */
     public static function toBlocks(string $markdown, array $people = []): array
@@ -38,24 +38,36 @@ class CommentMarkup
     }
 
     /**
-     * The @handles in a comment, lowercase and without the "@". Ones inside `code`,
-     * **bold** or links are left as text, so they aren't returned.
+     * Each @mention in a comment, as the names it could stand for, longest first and
+     * lowercase: "@Cameron Smith thanks" gives ["cameron smith thanks", "cameron smith",
+     * "cameron"], so a full name can be matched. Mentions inside `code`, **bold** or
+     * links are left as text, so they aren't returned.
      *
-     * @return list<string>
+     * @return list<list<string>>
      */
     public static function mentions(string $markdown): array
     {
-        $handles = [];
+        $mentions = [];
 
         foreach (self::lines($markdown) as $line) {
-            foreach (self::split(self::lineFormat($line)[1]) as $part) {
-                if (preg_match('/^'.self::MENTION.'$/u', $part)) {
-                    $handles[] = mb_strtolower(substr($part, 1));
+            $parts = self::split(self::lineFormat($line)[1]);
+
+            foreach ($parts as $i => $part) {
+                if (! preg_match('/^'.self::MENTION.'$/u', $part)) {
+                    continue;
                 }
+
+                $names = [mb_strtolower(substr($part, 1))];
+                preg_match_all("/\\G\\s+([\\p{L}\\p{M}'’-]+)/u", $parts[$i + 1] ?? '', $words);
+                foreach (array_slice($words[1], 0, 2) as $word) {
+                    $names[] = end($names).' '.mb_strtolower($word);
+                }
+
+                $mentions[] = array_reverse($names);
             }
         }
 
-        return array_values(array_unique($handles));
+        return array_values(array_unique($mentions, SORT_REGULAR));
     }
 
     /** @return list<string> */
@@ -84,22 +96,65 @@ class CommentMarkup
     /** @return list<array> */
     private static function inline(string $text, array $people): array
     {
-        return array_map(fn (string $part) => match (true) {
-            ($person = self::mentioned($part, $people)) !== null => [
-                'type' => 'tag',
-                'user' => ['id' => $person['id']],
-                'text' => '@'.$person['username'],
-            ],
-            (bool) preg_match('/^\*\*(.+)\*\*$/', $part, $m) => ['text' => $m[1], 'attributes' => ['bold' => true]],
-            (bool) preg_match('/^`(.+)`$/', $part, $m) => ['text' => $m[1], 'attributes' => ['code' => true]],
-            (bool) preg_match('/^\[(.+)\]\((.+)\)$/', $part, $m) => ['text' => $m[1], 'attributes' => ['link' => $m[2]]],
-            default => ['text' => $part, 'attributes' => []],
-        }, self::split($text));
+        $parts = self::split($text);
+        $blocks = [];
+
+        for ($i = 0; $i < count($parts); $i++) {
+            $part = $parts[$i];
+
+            $hit = preg_match('/^'.self::MENTION.'$/u', $part) ? self::mentioned($part, $parts[$i + 1] ?? '', $people) : null;
+
+            if ($hit) {
+                [$person, $length] = $hit;
+                $blocks[] = ['type' => 'tag', 'user' => ['id' => $person['id']], 'text' => '@'.$person['username']];
+
+                // The rest of a typed full name ("@Cameron| Smith") is part of the tag.
+                if (isset($parts[$i + 1]) && ($parts[$i + 1] = substr($parts[$i + 1], $length)) === '') {
+                    $i++;
+                }
+
+                continue;
+            }
+
+            $blocks[] = match (true) {
+                (bool) preg_match('/^\*\*(.+)\*\*$/', $part, $m) => ['text' => $m[1], 'attributes' => ['bold' => true]],
+                (bool) preg_match('/^`(.+)`$/', $part, $m) => ['text' => $m[1], 'attributes' => ['code' => true]],
+                (bool) preg_match('/^\[(.+)\]\((.+)\)$/', $part, $m) => ['text' => $m[1], 'attributes' => ['link' => $m[2]]],
+                default => ['text' => $part, 'attributes' => []],
+            };
+        }
+
+        return $blocks;
     }
 
-    /** The person a "@handle" part refers to, if it's one we resolved. */
-    private static function mentioned(string $part, array $people): ?array
+    /**
+     * Who a "@handle" refers to, preferring the longest resolved name that the
+     * following text continues ("@cameron" + " smith…" → "cameron smith").
+     *
+     * @return array{0: array, 1: int}|null the person, and how many bytes of $next the name used
+     */
+    private static function mentioned(string $part, string $next, array $people): ?array
     {
-        return preg_match('/^'.self::MENTION.'$/u', $part) ? ($people[mb_strtolower(substr($part, 1))] ?? null) : null;
+        $handle = mb_strtolower(substr($part, 1));
+        $best = null;
+
+        foreach ($people as $name => $person) {
+            $name = (string) $name;
+            if ($name !== $handle && ! str_starts_with($name, "{$handle} ")) {
+                continue;
+            }
+
+            $rest = substr($name, strlen($handle));
+            $pattern = '/^'.implode('\s+', array_map(fn ($w) => preg_quote($w, '/'), explode(' ', $rest))).'(?![\p{L}\p{M}\w])/iu';
+
+            if ($rest === '' || preg_match($pattern, $next, $m)) {
+                $length = $rest === '' ? 0 : strlen($m[0]);
+                if ($best === null || $length > $best[1]) {
+                    $best = [$person, $length];
+                }
+            }
+        }
+
+        return $best;
     }
 }

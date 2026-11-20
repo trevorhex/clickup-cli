@@ -40,6 +40,7 @@ class ShowCommand extends ClickUpCommand
         $this->description($task);
         $this->subtasks($task);
         $this->checklists($task);
+        $this->attachmentList($task);
         $this->comments($comments);
 
         return self::SUCCESS;
@@ -113,6 +114,21 @@ class ShowCommand extends ClickUpCommand
             foreach ($items as $item) {
                 $this->line('  '.($item['resolved'] ? '<fg=green>☑</>' : '☐').' '.OutputFormatter::escape($item['name']));
             }
+        }
+    }
+
+    private function attachmentList(array $t): void
+    {
+        $attachments = $this->attachments($t);
+
+        if ($attachments === []) {
+            return;
+        }
+
+        $this->section('Attachments ('.count($attachments).') · cu download '.Format::taskId($t).' <n>');
+        foreach ($attachments as $n => $a) {
+            $this->line(sprintf('  %2d. %s  <fg=gray>%s · %s</>', $n, OutputFormatter::escape($a['title'] ?? $a['id']),
+                Format::bytes($a['size'] ?? null), Format::ago($a['date'] ?? null)));
         }
     }
 

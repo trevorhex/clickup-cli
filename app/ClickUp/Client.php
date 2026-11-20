@@ -3,6 +3,7 @@
 namespace App\ClickUp;
 
 use App\Support\CommentMarkup;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
@@ -130,6 +131,25 @@ class Client
     public function sharedHierarchy(string $workspaceId): array
     {
         return $this->get("/team/{$workspaceId}/shared")['shared'] ?? ['tasks' => [], 'lists' => [], 'folders' => []];
+    }
+
+    /**
+     * Save an attachment to $path. Attachment URLs carry their own single-use
+     * signed token, so no API token is sent to the attachments host.
+     */
+    public function download(string $url, string $path): void
+    {
+        try {
+            Http::timeout(120)->sink($path)->get($url)->throw();
+        } catch (RequestException $e) {
+            @unlink($path);
+
+            throw new RuntimeException("Download failed ({$e->response->status()}). Try again: the link is single-use.", previous: $e);
+        } catch (ConnectionException $e) {
+            @unlink($path);
+
+            throw new RuntimeException("Download failed: {$e->getMessage()}", previous: $e);
+        }
     }
 
     public static function isCustomId(string $id): bool

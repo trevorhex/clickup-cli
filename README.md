@@ -23,9 +23,10 @@ Settings (workspace, default list) live in `~/.config/cu/config.json`, and a lis
 |---|---|
 | `cu me [--switch]` | Verify the token and pick a default workspace |
 | `cu tasks [search]` | Your open tasks. `-s status` (repeatable), `-l list`, `-d today\|overdue\|week\|YYYY-MM-DD`, `--closed`, `--everyone`, `--sort=due\|priority\|status\|updated\|list`, `--limit`, `--json` |
-| `cu show <id>` | Details, description, subtasks, checklists and the last 5 comments. `-c N` (up to 25), `--open`, `--json` |
+| `cu show <id>` | Details, description, subtasks, checklists, attachments and the last 5 comments. `-c N` (up to 25), `--open`, `--json` |
 | `cu update <id>...` | `-s status`, `--done`, `-p priority`, `-d due`, `--name`, `--desc`, `-a`/`-u` assignee (repeatable), `-c comment`. With one ID and no flags, prompts for a new status |
 | `cu comment <id> [msg]` | Add a comment in Markdown (prompts if there's no message). `-f file` reads it from a file, `-e comment-id` (or `-e last` for your newest) edits an existing comment instead |
+| `cu download <id> [files]...` | Save attachments. Pick them by number (from `cu show`), part of the file name, or attachment ID; with none given you're asked (a lone attachment just downloads). `--all`, `-o dir` (default: current directory), `--force` to overwrite instead of saving as `name (2).ext` |
 | `cu create [name]` | `-l list`, `-s`, `-p`, `-d`, `-a` (default: you), `--unassigned`, `--desc`, `--parent` (the subtask goes in the parent's list unless you pass `-l`), `--open` |
 | `cu lists [search]` | Space › Folder › List tree, optionally only paths containing `search`. `--default` picks the list for `cu create`, `--refresh` skips the cache |
 
@@ -64,6 +65,7 @@ cu update 868hyw6e4 868hyw6e2 --done -c "Verified on staging"
 cu update 868hyw6e4 -s review -a heather -d fri
 cu comment 868hyw6e4 -f notes.md
 cu comment 868hyw6e4 -f notes.md -e last
+cu download 868hyw6e4 2 invoice -o ~/Downloads
 cu create "Gift card checkout" -l "spa book" -p high -d +3d
 ```
 

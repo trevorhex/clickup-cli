@@ -52,6 +52,24 @@ class Format
         };
     }
 
+    /** 331270 → "324 KB". */
+    public static function bytes(?int $bytes): string
+    {
+        if ($bytes === null) {
+            return '';
+        }
+
+        $units = ['B', 'KB', 'MB', 'GB'];
+        $i = 0;
+        $size = (float) $bytes;
+        while ($size >= 1024 && $i < count($units) - 1) {
+            $size /= 1024;
+            $i++;
+        }
+
+        return ($i === 0 || $size >= 10 ? round($size) : round($size, 1)).' '.$units[$i];
+    }
+
     /** "3 hours ago" style timestamp. */
     public static function ago(?string $ms): string
     {

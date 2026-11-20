@@ -55,6 +55,19 @@ abstract class ClickUpCommand extends Command
     }
 
     /**
+     * A task's attachments (including ones added in comments), numbered from 1 in
+     * the order `cu show` lists them.
+     *
+     * @return array<int, array>
+     */
+    protected function attachments(array $task): array
+    {
+        $live = array_values(array_filter($task['attachments'] ?? [], fn ($a) => ! ($a['deleted'] ?? false)));
+
+        return $live === [] ? [] : array_combine(range(1, count($live)), $live);
+    }
+
+    /**
      * Resolve a list from an ID or partial name, prompting when several match.
      *
      * @return array{id: string, name: string, path: string}
